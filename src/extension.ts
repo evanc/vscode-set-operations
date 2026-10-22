@@ -1,19 +1,30 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
-import {
-  difference,
-  duplicates,
-  intersection,
-  symmetricDifference,
-  toLines,
-  union,
-  unique,
-} from './setOperations';
+import { Worker } from 'worker_threads';
+import type { Job, JobResult, OperationId } from './worker';
+
+/**
+ * VS Code doesn't share documents longer than this many characters with extensions:
+ * they can't read them through the editor, or create untitled editors that large.
+ */
+const SYNC_LIMIT = 50 * 1024 * 1024;
+
+/**
+ * Past VS Code's own large-file threshold, results open as plain text rather than in
+ * tab A's language, so language tooling isn't run over them.
+ */
+const LARGE_RESULT_CHARS = 20 * 1024 * 1024;
+const LARGE_RESULT_LINES = 300_000;
+
+const SAVE_AS = 'Save As…';
+
+/** Files read from disk past this size are refused, to protect the shared extension host's memory. */
+const MAX_DISK_READ = 256 * 1024 * 1024;
 
 interface Operation {
-  command: string;
+  /** Also the command ID's suffix: `setOps.<id>`. */
+  id: OperationId;
   name: string;
-  /** Receives tab A's lines, plus tab B's for two-tab operations. */
-  run: (a: string[], b: string[]) => string[];
   /**
    * Quick pick prompt for choosing tab B, given tab A's name. Operations without
    * one work on a single tab.
@@ -23,46 +34,42 @@ interface Operation {
 
 const operations: Operation[] = [
   {
-    command: 'setOperations.intersection',
+    id: 'intersection',
     name: 'Intersection',
-    run: intersection,
     prompt: (nameA) => `Lines in both "${nameA}" and…`,
   },
   {
-    command: 'setOperations.union',
+    id: 'union',
     name: 'Union',
-    run: union,
     prompt: (nameA) => `Lines in either "${nameA}" or…`,
   },
   {
-    command: 'setOperations.difference',
+    id: 'difference',
     name: 'Difference',
-    run: difference,
     prompt: (nameA) => `Lines in "${nameA}" that are not in…`,
   },
   {
-    command: 'setOperations.symmetricDifference',
+    id: 'symmetricDifference',
     name: 'Symmetric Difference',
-    run: symmetricDifference,
     prompt: (nameA) => `Lines in exactly one of "${nameA}" and…`,
   },
-  {
-    command: 'setOperations.unique',
-    name: 'Unique',
-    run: unique,
-  },
-  {
-    command: 'setOperations.duplicates',
-    name: 'Duplicates',
-    run: duplicates,
-  },
+  { id: 'unique', name: 'Unique' },
+  { id: 'duplicates', name: 'Duplicates' },
 ];
+
+/** A tab's text and the details needed to present a result derived from it. */
+interface Source {
+  text: string;
+  eol: string;
+  /** Unknown when the file had to be read from disk. */
+  languageId?: string;
+}
 
 export function activate(context: vscode.ExtensionContext) {
   for (const op of operations) {
     context.subscriptions.push(
       // When run from a tab's context menu, the first argument is that tab's URI.
-      vscode.commands.registerCommand(op.command, (arg?: unknown) => runOperation(op, arg))
+      vscode.commands.registerCommand(`setOps.${op.id}`, (arg?: unknown) => runOperation(op, arg))
     );
   }
 }
@@ -71,9 +78,9 @@ export function deactivate() {}
 
 async function runOperation(op: Operation, arg: unknown) {
   try {
-    const uriA = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
+    const uriA = arg instanceof vscode.Uri ? arg : activeTabUri();
     if (!uriA) {
-      vscode.window.showErrorMessage('Set Operations: open a text editor first.');
+      vscode.window.showErrorMessage('Set Ops: open a text editor first.');
       return;
     }
 
@@ -85,26 +92,146 @@ async function runOperation(op: Operation, arg: unknown) {
       }
     }
 
-    // openTextDocument returns the already-open document, so unsaved edits are included.
-    const docA = await vscode.workspace.openTextDocument(uriA);
-    const docB = uriB && (await vscode.workspace.openTextDocument(uriB));
-    const result = op.run(toLines(docA.getText()), docB ? toLines(docB.getText()) : []);
-    const eol = docA.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+    const { content, lineCount, source } = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: `Set Ops: ${op.name}` },
+      async () => {
+        const [a, b] = await Promise.all([read(uriA), uriB && read(uriB)]);
+        const result = await runInWorker({ operation: op.id, a: a.text, b: b?.text, eol: a.eol });
+        return { ...result, source: a };
+      }
+    );
 
-    const output = await vscode.workspace.openTextDocument({
-      content: result.join(eol),
-      language: docA.languageId,
-    });
-    await vscode.window.showTextDocument(output);
+    if (content.length > SYNC_LIMIT) {
+      await saveLargeResult(op, uriA, content);
+    } else {
+      const large = content.length > LARGE_RESULT_CHARS || lineCount > LARGE_RESULT_LINES;
+      const output = await vscode.workspace.openTextDocument({
+        content,
+        language: large ? 'plaintext' : source.languageId,
+      });
+      await vscode.window.showTextDocument(output);
+    }
     vscode.window.setStatusBarMessage(
-      `${op.name}: ${result.length} line${result.length === 1 ? '' : 's'}`,
+      `${op.name}: ${lineCount} line${lineCount === 1 ? '' : 's'}`,
       5000
     );
   } catch (err) {
-    vscode.window.showErrorMessage(
-      `Set Operations: ${err instanceof Error ? err.message : String(err)}`
+    vscode.window.showErrorMessage(`Set Ops: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function runInWorker(job: Job): Promise<JobResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'worker.js'));
+    worker.once('message', (result: JobResult) => {
+      resolve(result);
+      void worker.terminate();
+    });
+    worker.once('error', (err: Error & { code?: string }) => {
+      reject(
+        err.code === 'ERR_WORKER_OUT_OF_MEMORY'
+          ? new Error('ran out of memory. The files are too large to compare.')
+          : err
+      );
+    });
+    // Only reached first if the worker stopped without answering or reporting an error.
+    worker.once('exit', (code) => reject(new Error(`the worker stopped unexpectedly (code ${code}).`)));
+    worker.postMessage(job);
+  });
+}
+
+/**
+ * The active tab's document. Unlike activeTextEditor, this also finds files too large
+ * for VS Code to share with extensions.
+ */
+function activeTabUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  return input instanceof vscode.TabInputText ? input.uri : vscode.window.activeTextEditor?.document.uri;
+}
+
+async function read(uri: vscode.Uri): Promise<Source> {
+  let doc: vscode.TextDocument;
+  try {
+    // Returns the already-open document, so unsaved edits are included.
+    doc = await vscode.workspace.openTextDocument(uri);
+  } catch (err) {
+    const size = await fileSize(uri);
+    if (size === undefined || size <= SYNC_LIMIT) {
+      throw err;
+    }
+    return readFromDisk(uri, size);
+  }
+  return {
+    text: doc.getText(),
+    eol: doc.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n',
+    languageId: doc.languageId,
+  };
+}
+
+async function fileSize(uri: vscode.Uri): Promise<number | undefined> {
+  try {
+    return (await vscode.workspace.fs.stat(uri)).size;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Reads a file too large for VS Code to share. Assumes UTF-8. */
+async function readFromDisk(uri: vscode.Uri, size: number): Promise<Source> {
+  if (isDirty(uri)) {
+    throw new Error(
+      `"${baseName(uri)}" is over 50MB and has unsaved changes, which VS Code doesn't share with extensions. Save it and try again.`
     );
   }
+  if (size > MAX_DISK_READ) {
+    throw new Error(`"${baseName(uri)}" is over the 256MB limit.`);
+  }
+  const bytes = await vscode.workspace.fs.readFile(uri);
+  // Like VS Code, treat files with null bytes near the start as binary.
+  if (bytes.subarray(0, 512).includes(0)) {
+    throw new Error(`"${baseName(uri)}" seems to be binary.`);
+  }
+  const text = new TextDecoder().decode(bytes);
+  const firstNewline = text.indexOf('\n');
+  return { text, eol: firstNewline > 0 && text[firstNewline - 1] === '\r' ? '\r\n' : '\n' };
+}
+
+function isDirty(uri: vscode.Uri): boolean {
+  return vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some(
+      (tab) =>
+        tab.isDirty &&
+        tab.input instanceof vscode.TabInputText &&
+        tab.input.uri.toString() === uri.toString()
+    )
+  );
+}
+
+/** Results too large for an untitled editor are saved to a file instead, which VS Code can open. */
+async function saveLargeResult(op: Operation, uriA: vscode.Uri, content: string) {
+  const size = Math.round(content.length / 1024 / 1024);
+  const choice = await vscode.window.showWarningMessage(
+    `The ${op.name.toLowerCase()} result is ${size}MB, too large for an unsaved editor. Save it to a file instead?`,
+    { modal: true },
+    SAVE_AS
+  );
+  if (choice !== SAVE_AS) {
+    return;
+  }
+  const fileName = `${op.name.toLowerCase().replace(/ /g, '-')}.txt`;
+  const target = await vscode.window.showSaveDialog({
+    defaultUri: uriA.scheme === 'file' ? vscode.Uri.joinPath(uriA, '..', fileName) : undefined,
+    saveLabel: 'Save Result',
+  });
+  if (!target) {
+    return;
+  }
+  await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(content));
+  await vscode.commands.executeCommand('vscode.open', target);
+}
+
+function baseName(uri: vscode.Uri): string {
+  return uri.path.split('/').pop() || uri.toString();
 }
 
 async function pickOtherTab(op: Operation, uriA: vscode.Uri): Promise<vscode.Uri | undefined> {
@@ -128,7 +255,7 @@ async function pickOtherTab(op: Operation, uriA: vscode.Uri): Promise<vscode.Uri
   }
 
   if (items.length === 0) {
-    vscode.window.showErrorMessage('Set Operations: open another editor tab to compare against.');
+    vscode.window.showErrorMessage('Set Ops: open another editor tab to compare against.');
     return undefined;
   }
   if (items.length === 1) {
@@ -138,10 +265,9 @@ async function pickOtherTab(op: Operation, uriA: vscode.Uri): Promise<vscode.Uri
   // Editors that are currently on screen (e.g. the other side of a split) are the likeliest picks.
   items.sort((x, y) => Number(visible.has(y.uri.toString())) - Number(visible.has(x.uri.toString())));
 
-  const nameA = uriA.path.split('/').pop() ?? uriA.toString();
   const picked = await vscode.window.showQuickPick(items, {
-    title: `Set Operations: ${op.name}`,
-    placeHolder: op.prompt?.(nameA),
+    title: `Set Ops: ${op.name}`,
+    placeHolder: op.prompt?.(baseName(uriA)),
     matchOnDescription: true,
   });
   return picked?.uri;

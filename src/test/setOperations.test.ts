@@ -14,6 +14,10 @@ test('toLines keeps lines exactly as written', () => {
   assert.deepEqual(toLines('  a \n\nA\na'), ['  a ', '', 'A', 'a']);
 });
 
+test('toLines ends lines at CRLF, LF, or a lone CR', () => {
+  assert.deepEqual(toLines('a\r\nb\rc\nd'), ['a', 'b', 'c', 'd']);
+});
+
 test('toLines treats a trailing newline as a terminator', () => {
   assert.deepEqual(toLines('a\nb\n'), ['a', 'b']);
   assert.deepEqual(toLines('a\r\nb\r\n'), ['a', 'b']);

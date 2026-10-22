@@ -1,10 +1,11 @@
 /**
  * Splits text into lines. Lines are kept exactly as written (no trimming,
- * blank lines included, case-sensitive). A trailing newline terminates the
- * last line rather than starting an extra empty one.
+ * blank lines included, case-sensitive). Like VS Code, CRLF, LF, and lone CR all
+ * end a line. A trailing line ending terminates the last line rather than
+ * starting an extra empty one.
  */
 export function toLines(text: string): string[] {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n?|\n/);
   if (lines[lines.length - 1] === '') {
     lines.pop();
   }
@@ -13,19 +14,38 @@ export function toLines(text: string): string[] {
 
 /** Lines present in both `a` and `b`, in the order they first appear in `a`. */
 export function intersection(a: string[], b: string[]): string[] {
-  const inB = new Set(b);
-  return unique(a.filter((line) => inB.has(line)));
+  const pending = new Set(b);
+  const result: string[] = [];
+  for (const line of a) {
+    // Deleting as we go means each shared line is emitted once.
+    if (pending.delete(line)) {
+      result.push(line);
+    }
+  }
+  return result;
 }
 
 /** Lines present in either `a` or `b`: all of `a`'s lines, then `b`'s new ones. */
 export function union(a: string[], b: string[]): string[] {
-  return unique([...a, ...b]);
+  const all = new Set(a);
+  for (const line of b) {
+    all.add(line);
+  }
+  return [...all];
 }
 
 /** Lines present in `a` but not in `b`, in the order they first appear in `a`. */
 export function difference(a: string[], b: string[]): string[] {
-  const inB = new Set(b);
-  return unique(a.filter((line) => !inB.has(line)));
+  // Lines to skip: everything in `b`, plus each line of `a` once it's been emitted.
+  const skip = new Set(b);
+  const result: string[] = [];
+  for (const line of a) {
+    if (!skip.has(line)) {
+      skip.add(line);
+      result.push(line);
+    }
+  }
+  return result;
 }
 
 /** Lines present in exactly one of `a` and `b`: those only in `a` first, then those only in `b`. */
@@ -44,5 +64,11 @@ export function duplicates(lines: string[]): string[] {
   for (const line of lines) {
     counts.set(line, (counts.get(line) ?? 0) + 1);
   }
-  return [...counts].filter(([, count]) => count > 1).map(([line]) => line);
+  const result: string[] = [];
+  for (const [line, count] of counts) {
+    if (count > 1) {
+      result.push(line);
+    }
+  }
+  return result;
 }

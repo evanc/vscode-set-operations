@@ -1,13 +1,18 @@
 {
-  "name": "set-operations",
-  "displayName": "Set Operations",
-  "description": "Set operations on the lines of editor tabs: intersection, union, difference, unique, and more.",
-  "version": "0.0.3",
+  "name": "set-ops",
+  "displayName": "Set Ops",
+  "description": "Intersection, union, difference, and more on the lines of your editor tabs.",
+  "version": "0.1.0",
   "publisher": "evancoonrod",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/evanc/vscode-set-operations.git"
+  },
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1b2649",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -15,76 +20,97 @@
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "set",
+    "sets",
+    "intersection",
+    "union",
+    "difference",
+    "symmetric difference",
+    "unique",
+    "duplicates",
+    "dedupe",
+    "compare",
+    "lines",
+    "venn"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "setOperations.intersection",
+        "command": "setOps.intersection",
         "title": "Intersection",
-        "category": "Set Operations"
+        "category": "Set Ops"
       },
       {
-        "command": "setOperations.union",
+        "command": "setOps.union",
         "title": "Union",
-        "category": "Set Operations"
+        "category": "Set Ops"
       },
       {
-        "command": "setOperations.difference",
+        "command": "setOps.difference",
         "title": "Difference",
-        "category": "Set Operations"
+        "category": "Set Ops"
       },
       {
-        "command": "setOperations.symmetricDifference",
+        "command": "setOps.symmetricDifference",
         "title": "Symmetric Difference",
-        "category": "Set Operations"
+        "category": "Set Ops"
       },
       {
-        "command": "setOperations.unique",
+        "command": "setOps.unique",
         "title": "Unique",
-        "category": "Set Operations"
+        "category": "Set Ops"
       },
       {
-        "command": "setOperations.duplicates",
+        "command": "setOps.duplicates",
         "title": "Duplicates",
-        "category": "Set Operations"
+        "category": "Set Ops"
       }
     ],
     "submenus": [
       {
-        "id": "setOperations.submenu",
-        "label": "Set Operations"
+        "id": "setOps.submenu",
+        "label": "Set Ops"
       }
     ],
     "menus": {
       "editor/title/context": [
         {
-          "submenu": "setOperations.submenu",
-          "group": "9_setOperations"
+          "submenu": "setOps.submenu",
+          "group": "9_setOps",
+          "when": "resourceSet"
         }
       ],
-      "setOperations.submenu": [
+      "setOps.submenu": [
         {
-          "command": "setOperations.intersection",
+          "command": "setOps.intersection",
           "group": "navigation@1"
         },
         {
-          "command": "setOperations.union",
+          "command": "setOps.union",
           "group": "navigation@2"
         },
         {
-          "command": "setOperations.difference",
+          "command": "setOps.difference",
           "group": "navigation@3"
         },
         {
-          "command": "setOperations.symmetricDifference",
+          "command": "setOps.symmetricDifference",
           "group": "navigation@4"
         },
         {
-          "command": "setOperations.unique",
+          "command": "setOps.unique",
           "group": "2_singleTab@1"
         },
         {
-          "command": "setOperations.duplicates",
+          "command": "setOps.duplicates",
           "group": "2_singleTab@2"
         }
       ]
@@ -102,7 +128,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.0.0",
+    "@vscode/vsce": "^4.0.0",
     "typescript": "^5.4.0"
   }
 }

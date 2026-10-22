@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22305c"/>
+      <stop offset="1" stop-color="#121a36"/>
+    </linearGradient>
+    <clipPath id="left">
+      <circle cx="92" cy="128" r="72"/>
+    </clipPath>
+  </defs>
+
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+
+  <!-- Set A, set B, and their intersection (B clipped to A) -->
+  <circle cx="92" cy="128" r="72" fill="#2ec4b6"/>
+  <circle cx="164" cy="128" r="72" fill="#ff6b6b"/>
+  <circle cx="164" cy="128" r="72" fill="#ffd166" clip-path="url(#left)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6">
+    <circle cx="92" cy="128" r="72"/>
+    <circle cx="164" cy="128" r="72"/>
+  </g>
+
+  <!-- Elements: a square only in A, a triangle only in B, a dot in both -->
+  <g fill="#121a36">
+    <rect x="40" y="112" width="32" height="32" rx="4"/>
+    <polygon points="200,109 219,143 181,143" stroke="#121a36" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="128" cy="128" r="15"/>
+  </g>
+</svg>
