@@ -1,60 +1,95 @@
 # Set Ops
 
-Treat the lines of editor tabs as sets and open the result in a new editor.
+Compare the lines of your editor tabs as sets. Find what two files have in common,
+what's only in one of them, or which lines repeat, and get the answer in a new editor.
 
-**Two tabs (A and B)**
+It works on anything with one item per line: IDs, email addresses, package names,
+URLs, log lines, CSV rows.
 
-| Command | Result |
-| --- | --- |
-| **Set Ops: Intersection** | Lines that appear in both A and B |
-| **Set Ops: Union** | Lines that appear in A or B |
-| **Set Ops: Difference** | Lines that appear in A but not in B |
-| **Set Ops: Symmetric Difference** | Lines that appear in exactly one of A and B (A's first, then B's) |
+## Install
 
-**One tab**
+Install **Set Ops** from the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=evancoonrod.set-ops),
+or search for "Set Ops" in VS Code's Extensions view (`Ctrl+Shift+X`, or `Cmd+Shift+X` on macOS).
 
-| Command | Result |
-| --- | --- |
-| **Set Ops: Unique** | Each line once, with repeats removed |
-| **Set Ops: Duplicates** | Lines that appear more than once, each listed once |
+## Quick start
 
-## Usage
+1. Open the two files you want to compare. To compare lists from somewhere else,
+   paste each one into a new untitled tab (`Ctrl+N` / `Cmd+N`).
+2. Click the tab you want to be **A**.
+3. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`), type **Set Ops**, and pick
+   an operation.
+4. Pick tab **B** from the list. If only one other tab is open, it's used automatically.
 
-- **Command Palette:** focus tab A and run a command. Two-tab commands then ask you to pick tab B.
-- **Tab context menu:** right-click tab A → **Set Ops** → pick an operation.
+The result opens in a new, unsaved editor, and your original tabs are left unchanged.
 
-If only one other text tab is open, it is used as B without asking. Otherwise the
-picker lists every open text tab, with tabs currently on screen (such as the other
-side of a split) first. For B − A, run Difference from tab B instead.
+You can also right-click a tab and choose **Set Ops** and then an operation. The tab
+you right-clicked is A.
 
-## How lines are compared
+## Operations
 
-- Each line is one element. Lines are compared exactly: case, leading and trailing
-  whitespace, and blank lines all count.
-- A trailing newline at the end of a file does not add an extra empty line.
-- Results contain no duplicates and keep first-seen order (A's lines first, then B's
-  for Union).
-- Unsaved edits are included. The result uses A's line endings, and A's language
-  mode unless the result is large.
+All examples below use these two tabs:
+
+```
+Tab A     Tab B
+-----     -----
+apple     banana
+banana    cherry
+cherry    date
+apple
+```
+
+| Command | Gives you | Example result |
+| --- | --- | --- |
+| **Set Ops: Intersection** | Lines in both A and B | banana, cherry |
+| **Set Ops: Union** | Lines in A or B (or both) | apple, banana, cherry, date |
+| **Set Ops: Difference** | Lines in A that aren't in B | apple |
+| **Set Ops: Symmetric Difference** | Lines in exactly one of A and B | apple, date |
+| **Set Ops: Unique** | A's lines with repeats removed | apple, banana, cherry |
+| **Set Ops: Duplicates** | A's lines that appear more than once | apple |
+
+Unique and Duplicates work on a single tab, so they don't ask for B.
+
+## How lines are matched
+
+- Matching is exact. `Apple` and `apple` are different lines, and so are lines that
+  differ only by leading or trailing spaces. Blank lines count too.
+- Each line appears at most once in a result, in the order it first appears (A's
+  lines first, then B's).
+- A newline at the very end of a file doesn't count as an extra blank line.
+- Unsaved edits in your tabs are included.
+- Results use A's line endings and, unless the result is very large, A's language mode.
+
+## Tips
+
+- **B − A:** Difference gives you A − B. For the other direction, run it from tab B.
+- **More than two files:** results are ordinary tabs, so you can chain operations. For
+  example, intersect A with B, then intersect that result with C.
+- **Keyboard shortcuts:** there are none by default. To add one, run
+  **Preferences: Open Keyboard Shortcuts (JSON)** and add an entry such as:
+
+  ```json
+  { "key": "ctrl+alt+i", "command": "setOps.intersection" }
+  ```
+
+  The command IDs are `setOps.intersection`, `setOps.union`, `setOps.difference`,
+  `setOps.symmetricDifference`, `setOps.unique`, and `setOps.duplicates`.
 
 ## Large files
 
-- The work runs in the background, so VS Code and other extensions stay responsive.
+- The work runs in the background, so VS Code stays responsive. Comparing two
+  million-line files takes about a second.
 - VS Code doesn't share files over 50MB with extensions, so Set Ops reads those from
-  disk instead (as UTF-8, up to 256MB). Save any unsaved changes in them first.
-- Results over 50MB are too large for an unsaved editor. Set Ops offers to save them
-  to a file and opens that instead.
+  disk instead (as UTF-8, up to 256MB each). Save any changes to such a file first.
+- A result over 50MB is too large for an unsaved editor, so Set Ops asks where to save
+  it and then opens the saved file.
 
-## Development
+## Requirements
 
-```sh
-npm install
-npm test                  # unit tests for the set logic and the worker
-npm run test:integration  # runs the commands inside a downloaded copy of VS Code
-npm run package           # builds set-ops-<version>.vsix
-```
+- VS Code 1.85 or later, on the desktop. It doesn't run in the browser (vscode.dev).
+- Works in Restricted Mode, so you can use it in folders you haven't marked as trusted.
 
-`npm run test:integration` uses a pinned VS Code version; set `VSCODE_VERSION` to test
-another (e.g. `1.85.0`, the oldest supported). Press F5 in VS Code to launch an
-Extension Development Host with the extension loaded. `images/icon.png` is rendered
-from `images/icon.svg` at 256×256.
+## Feedback
+
+Found a bug or have an idea? [Open an issue](https://github.com/evanc/vscode-set-operations/issues).
+To work on Set Ops itself, see [CONTRIBUTING.md](CONTRIBUTING.md).

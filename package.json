@@ -1,8 +1,8 @@
 {
   "name": "set-ops",
   "displayName": "Set Ops",
-  "description": "Intersection, union, difference, and more on the lines of your editor tabs.",
-  "version": "0.1.0",
+  "description": "Compare editor tabs line by line: intersection, union, difference, symmetric difference, unique, and duplicates.",
+  "version": "0.1.1",
   "publisher": "evancoonrod",
   "license": "MIT",
   "repository": {

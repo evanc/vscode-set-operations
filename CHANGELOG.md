@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Expanded the README into a user guide with a quick start, examples for each
+  operation, tips, and large-file notes.
+
 ## 0.1.0
 
 First Marketplace release.

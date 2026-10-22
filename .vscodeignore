@@ -6,3 +6,4 @@ out/test/**
 tsconfig.json
 .gitignore
 images/icon.svg
+CONTRIBUTING.md
