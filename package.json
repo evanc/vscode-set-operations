@@ -4,6 +4,11 @@
   "description": "Set operations on the lines of editor tabs: intersection, union, difference, unique, and more.",
   "version": "0.0.3",
   "publisher": "evancoonrod",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evanc/vscode-set-operations.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -91,7 +96,7 @@
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test \"out/test/*.test.js\"",
     "test:integration": "npm run compile && node ./out/test/runIntegration.js",
-    "package": "vsce package --skip-license --allow-missing-repository"
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
