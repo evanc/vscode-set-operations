@@ -1,0 +1,103 @@
+{
+  "name": "set-operations",
+  "displayName": "Set Operations",
+  "description": "Set operations on the lines of editor tabs: intersection, union, difference, unique, and more.",
+  "version": "0.0.3",
+  "publisher": "evancoonrod",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "setOperations.intersection",
+        "title": "Intersection",
+        "category": "Set Operations"
+      },
+      {
+        "command": "setOperations.union",
+        "title": "Union",
+        "category": "Set Operations"
+      },
+      {
+        "command": "setOperations.difference",
+        "title": "Difference",
+        "category": "Set Operations"
+      },
+      {
+        "command": "setOperations.symmetricDifference",
+        "title": "Symmetric Difference",
+        "category": "Set Operations"
+      },
+      {
+        "command": "setOperations.unique",
+        "title": "Unique",
+        "category": "Set Operations"
+      },
+      {
+        "command": "setOperations.duplicates",
+        "title": "Duplicates",
+        "category": "Set Operations"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "setOperations.submenu",
+        "label": "Set Operations"
+      }
+    ],
+    "menus": {
+      "editor/title/context": [
+        {
+          "submenu": "setOperations.submenu",
+          "group": "9_setOperations"
+        }
+      ],
+      "setOperations.submenu": [
+        {
+          "command": "setOperations.intersection",
+          "group": "navigation@1"
+        },
+        {
+          "command": "setOperations.union",
+          "group": "navigation@2"
+        },
+        {
+          "command": "setOperations.difference",
+          "group": "navigation@3"
+        },
+        {
+          "command": "setOperations.symmetricDifference",
+          "group": "navigation@4"
+        },
+        {
+          "command": "setOperations.unique",
+          "group": "2_singleTab@1"
+        },
+        {
+          "command": "setOperations.duplicates",
+          "group": "2_singleTab@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/test/*.test.js\"",
+    "test:integration": "npm run compile && node ./out/test/runIntegration.js",
+    "package": "vsce package --skip-license --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}
