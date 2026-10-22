@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- New **Set Ops: Compare** command: a one-line summary of how two tabs relate (how
+  many lines are shared or only in each, and whether they match, one contains the
+  other, or they have nothing in common), with buttons to open each group of lines.
+
 ## 0.1.1
 
 - Expanded the README into a user guide with a quick start, examples for each

@@ -1,7 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Worker } from 'worker_threads';
-import type { Job, JobResult, OperationId } from './worker';
+import { Comparison, describeComparison } from './compare';
+import type { CompareJob, Job, LinesJob, LinesResult, OperationId } from './worker';
 
 /**
  * VS Code doesn't share documents longer than this many characters with extensions:
@@ -66,64 +67,138 @@ interface Source {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  // When run from a tab's context menu, a command's first argument is that tab's URI.
   for (const op of operations) {
     context.subscriptions.push(
-      // When run from a tab's context menu, the first argument is that tab's URI.
-      vscode.commands.registerCommand(`setOps.${op.id}`, (arg?: unknown) => runOperation(op, arg))
+      vscode.commands.registerCommand(`setOps.${op.id}`, (arg?: unknown) =>
+        reportErrors(async () => {
+          const tabs = await chooseTabs(op.name, arg, op.prompt);
+          if (tabs) {
+            await showOperation(op, tabs.uriA, tabs.uriB);
+          }
+        })
+      )
     );
   }
+  context.subscriptions.push(
+    vscode.commands.registerCommand('setOps.compare', (arg?: unknown) =>
+      reportErrors(async () => {
+        const tabs = await chooseTabs('Compare', arg, (nameA) => `Compare "${nameA}" with…`);
+        if (tabs?.uriB) {
+          await compareTabs(tabs.uriA, tabs.uriB);
+        }
+      })
+    )
+  );
 }
 
 export function deactivate() {}
 
-async function runOperation(op: Operation, arg: unknown) {
+async function reportErrors(task: () => Promise<void>) {
   try {
-    const uriA = arg instanceof vscode.Uri ? arg : activeTabUri();
-    if (!uriA) {
-      vscode.window.showErrorMessage('Set Ops: open a text editor first.');
-      return;
-    }
-
-    let uriB: vscode.Uri | undefined;
-    if (op.prompt) {
-      uriB = await pickOtherTab(op, uriA);
-      if (!uriB) {
-        return;
-      }
-    }
-
-    const { content, lineCount, source } = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Window, title: `Set Ops: ${op.name}` },
-      async () => {
-        const [a, b] = await Promise.all([read(uriA), uriB && read(uriB)]);
-        const result = await runInWorker({ operation: op.id, a: a.text, b: b?.text, eol: a.eol });
-        return { ...result, source: a };
-      }
-    );
-
-    if (content.length > SYNC_LIMIT) {
-      await saveLargeResult(op, uriA, content);
-    } else {
-      const large = content.length > LARGE_RESULT_CHARS || lineCount > LARGE_RESULT_LINES;
-      const output = await vscode.workspace.openTextDocument({
-        content,
-        language: large ? 'plaintext' : source.languageId,
-      });
-      await vscode.window.showTextDocument(output);
-    }
-    vscode.window.setStatusBarMessage(
-      `${op.name}: ${lineCount} line${lineCount === 1 ? '' : 's'}`,
-      5000
-    );
+    await task();
   } catch (err) {
     vscode.window.showErrorMessage(`Set Ops: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-function runInWorker(job: Job): Promise<JobResult> {
+/**
+ * Finds tab A (the command's argument, or the active tab), then asks for tab B if
+ * `prompt` is given. Returns undefined if there's no tab A or the user backs out.
+ */
+async function chooseTabs(
+  title: string,
+  arg: unknown,
+  prompt?: (nameA: string) => string
+): Promise<{ uriA: vscode.Uri; uriB?: vscode.Uri } | undefined> {
+  const uriA = arg instanceof vscode.Uri ? arg : activeTabUri();
+  if (!uriA) {
+    vscode.window.showErrorMessage('Set Ops: open a text editor first.');
+    return undefined;
+  }
+  if (!prompt) {
+    return { uriA };
+  }
+  const uriB = await pickOtherTab(title, prompt, uriA);
+  return uriB && { uriA, uriB };
+}
+
+async function showOperation(op: Operation, uriA: vscode.Uri, uriB?: vscode.Uri) {
+  const { content, lineCount, source } = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: `Set Ops: ${op.name}` },
+    async () => {
+      const [a, b] = await Promise.all([read(uriA), uriB && read(uriB)]);
+      const result = await runInWorker({ operation: op.id, a: a.text, b: b?.text, eol: a.eol });
+      return { ...result, source: a };
+    }
+  );
+
+  if (content.length > SYNC_LIMIT) {
+    await saveLargeResult(op, uriA, content);
+  } else {
+    const large = content.length > LARGE_RESULT_CHARS || lineCount > LARGE_RESULT_LINES;
+    const output = await vscode.workspace.openTextDocument({
+      content,
+      language: large ? 'plaintext' : source.languageId,
+    });
+    await vscode.window.showTextDocument(output);
+  }
+  vscode.window.setStatusBarMessage(
+    `${op.name}: ${lineCount} line${lineCount === 1 ? '' : 's'}`,
+    5000
+  );
+}
+
+/** Summarizes how A and B relate, with buttons to open the lines behind each count. */
+async function compareTabs(uriA: vscode.Uri, uriB: vscode.Uri) {
+  const comparison = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: 'Set Ops: Compare' },
+    async () => {
+      const [a, b] = await Promise.all([read(uriA), read(uriB)]);
+      return runInWorker({ operation: 'compare', a: a.text, b: b.text });
+    }
+  );
+
+  const [nameA, nameB] = distinctNames(uriA, uriB);
+  const actions = new Map<string, () => Promise<void>>();
+  if (comparison.shared > 0) {
+    actions.set('Show Shared', () => showOperation(operation('intersection'), uriA, uriB));
+  }
+  if (comparison.onlyA > 0) {
+    actions.set(`Show Only in ${nameA}`, () => showOperation(operation('difference'), uriA, uriB));
+  }
+  if (comparison.onlyB > 0) {
+    actions.set(`Show Only in ${nameB}`, () => showOperation(operation('difference'), uriB, uriA));
+  }
+
+  const choice = await vscode.window.showInformationMessage(
+    describeComparison(comparison, nameA, nameB),
+    ...actions.keys()
+  );
+  if (choice) {
+    await actions.get(choice)?.();
+  }
+}
+
+function operation(id: OperationId): Operation {
+  return operations.find((op) => op.id === id)!;
+}
+
+/** Display names for two tabs, using workspace-relative paths when their file names match. */
+function distinctNames(uriA: vscode.Uri, uriB: vscode.Uri): [string, string] {
+  const nameA = baseName(uriA);
+  const nameB = baseName(uriB);
+  return nameA === nameB
+    ? [vscode.workspace.asRelativePath(uriA), vscode.workspace.asRelativePath(uriB)]
+    : [nameA, nameB];
+}
+
+function runInWorker(job: LinesJob): Promise<LinesResult>;
+function runInWorker(job: CompareJob): Promise<Comparison>;
+function runInWorker(job: Job): Promise<LinesResult | Comparison> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'worker.js'));
-    worker.once('message', (result: JobResult) => {
+    worker.once('message', (result: LinesResult | Comparison) => {
       resolve(result);
       void worker.terminate();
     });
@@ -234,7 +309,11 @@ function baseName(uri: vscode.Uri): string {
   return uri.path.split('/').pop() || uri.toString();
 }
 
-async function pickOtherTab(op: Operation, uriA: vscode.Uri): Promise<vscode.Uri | undefined> {
+async function pickOtherTab(
+  title: string,
+  prompt: (nameA: string) => string,
+  uriA: vscode.Uri
+): Promise<vscode.Uri | undefined> {
   const seen = new Set([uriA.toString()]);
   const visible = new Set(vscode.window.visibleTextEditors.map((e) => e.document.uri.toString()));
   const items: (vscode.QuickPickItem & { uri: vscode.Uri })[] = [];
@@ -266,8 +345,8 @@ async function pickOtherTab(op: Operation, uriA: vscode.Uri): Promise<vscode.Uri
   items.sort((x, y) => Number(visible.has(y.uri.toString())) - Number(visible.has(x.uri.toString())));
 
   const picked = await vscode.window.showQuickPick(items, {
-    title: `Set Ops: ${op.name}`,
-    placeHolder: op.prompt?.(baseName(uriA)),
+    title: `Set Ops: ${title}`,
+    placeHolder: prompt(baseName(uriA)),
     matchOnDescription: true,
   });
   return picked?.uri;

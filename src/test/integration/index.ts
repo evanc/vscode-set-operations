@@ -15,6 +15,7 @@ export async function run(): Promise<void> {
   await check('setOps.symmetricDifference', 'a\nd');
   await check('setOps.unique', 'a\nb\nc');
   await check('setOps.duplicates', 'b');
+  await checkCompare();
   await checkLargeFiles();
   console.log('All integration checks passed');
 }
@@ -32,6 +33,34 @@ async function check(command: string, expected: string, options: { fromTabB?: bo
   assert.ok(result && result !== docA && result !== docB, `${command}: no result editor opened`);
   assert.strictEqual(result.getText(), expected, `${command}${options.fromTabB ? ' (from B)' : ''}`);
 
+  await closeAllEditors();
+}
+
+/** Compare shows a summary, and its "Show Only in …" button for A opens A − B. */
+async function checkCompare() {
+  const docA = await vscode.workspace.openTextDocument({ content: 'a\nb\nc\nb\n' });
+  const docB = await vscode.workspace.openTextDocument({ content: 'b\nc\nd\n' });
+  await vscode.window.showTextDocument(docB, { preview: false });
+  await vscode.window.showTextDocument(docA, { preview: false });
+
+  let summary = '';
+  let buttons: string[] = [];
+  const restore = stubWindow({
+    showInformationMessage: async (message: string, ...items: string[]) => {
+      summary = message;
+      buttons = items;
+      return items.find((item) => item.startsWith('Show Only in'));
+    },
+  });
+  try {
+    await vscode.commands.executeCommand('setOps.compare');
+  } finally {
+    restore();
+  }
+
+  assert.match(summary, /share some lines\. 2 shared · 1 only in "Untitled-\d+" · 1 only in "Untitled-\d+"\./);
+  assert.strictEqual(buttons.length, 3, `compare: expected 3 buttons, got ${buttons.join(', ')}`);
+  assert.strictEqual(activeDocument()?.getText(), 'a', 'compare: "Show Only in" for A should open A − B');
   await closeAllEditors();
 }
 

@@ -50,6 +50,17 @@ apple
 
 Unique and Duplicates work on a single tab, so they don't ask for B.
 
+### Compare
+
+**Set Ops: Compare** gives you a quick summary instead of a new editor. If the
+example tabs were saved as `a.txt` and `b.txt`, it would show:
+
+> "a.txt" and "b.txt" share some lines. 2 shared · 1 only in "a.txt" · 1 only in "b.txt".
+
+It also tells you when the two tabs have the same lines, when every line of one is in
+the other, or when they have nothing in common. Buttons on the message open the shared
+lines, or the lines that are only in either tab.
+
 ## How lines are matched
 
 - Matching is exact. `Apple` and `apple` are different lines, and so are lines that
@@ -72,8 +83,9 @@ Unique and Duplicates work on a single tab, so they don't ask for B.
   { "key": "ctrl+alt+i", "command": "setOps.intersection" }
   ```
 
-  The command IDs are `setOps.intersection`, `setOps.union`, `setOps.difference`,
-  `setOps.symmetricDifference`, `setOps.unique`, and `setOps.duplicates`.
+  The command IDs are `setOps.compare`, `setOps.intersection`, `setOps.union`,
+  `setOps.difference`, `setOps.symmetricDifference`, `setOps.unique`, and
+  `setOps.duplicates`.
 
 ## Large files
 

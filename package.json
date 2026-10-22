@@ -1,8 +1,8 @@
 {
   "name": "set-ops",
   "displayName": "Set Ops",
-  "description": "Compare editor tabs line by line: intersection, union, difference, symmetric difference, unique, and duplicates.",
-  "version": "0.1.1",
+  "description": "Compare editor tabs line by line: a quick summary, plus intersection, union, difference, symmetric difference, unique, and duplicates.",
+  "version": "0.2.0",
   "publisher": "evancoonrod",
   "license": "MIT",
   "repository": {
@@ -43,6 +43,11 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "setOps.compare",
+        "title": "Compare",
+        "category": "Set Ops"
+      },
       {
         "command": "setOps.intersection",
         "title": "Intersection",
@@ -89,6 +94,10 @@
         }
       ],
       "setOps.submenu": [
+        {
+          "command": "setOps.compare",
+          "group": "navigation@0"
+        },
         {
           "command": "setOps.intersection",
           "group": "navigation@1"
